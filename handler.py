@@ -126,46 +126,7 @@ def generate_image(job):
     """
     Generate an image from text using your Model
     """
-    # -------------------------------------------------------------------------
-    # 🐞 DEBUG LOGGING
-    # -------------------------------------------------------------------------
-    import json, pprint
-
-    # Log the exact structure RunPod delivers so we can see every nesting level.
-    print("[generate_image] RAW job dict:")
-    try:
-        print(json.dumps(job, indent=2, default=str), flush=True)
-    except Exception:
-        pprint.pprint(job, depth=4, compact=False)
-
-    # -------------------------------------------------------------------------
-    # Original (strict) behaviour – assume the expected single wrapper exists.
-    # -------------------------------------------------------------------------
-    job_input = job["input"]
-
-    print("[generate_image] job['input'] payload:")
-    try:
-        print(json.dumps(job_input, indent=2, default=str), flush=True)
-    except Exception:
-        pprint.pprint(job_input, depth=4, compact=False)
-
-    # Input validation
-    try:
-        validated_input = validate(job_input, INPUT_SCHEMA)
-    except Exception as err:
-        import traceback
-
-        print("[generate_image] validate(...) raised an exception:", err, flush=True)
-        traceback.print_exc()
-        # Re-raise so RunPod registers the failure (but logs are now visible).
-        raise
-
-    print("[generate_image] validate(...) returned:")
-    try:
-        print(json.dumps(validated_input, indent=2, default=str), flush=True)
-    except Exception:
-        pprint.pprint(validated_input, depth=4, compact=False)
-
+    validated_input = validate(job["input"], INPUT_SCHEMA)
     if "errors" in validated_input:
         return {"error": validated_input["errors"]}
     job_input = validated_input["validated_input"]
@@ -211,12 +172,6 @@ def generate_image(job):
                     generator=generator,
                 )
                 image = base_result.images
-
-            # Debug: Log tensor info
-            if hasattr(image, 'dtype'):
-                print(f"[DEBUG] Base output dtype: {image.dtype}, shape: {image.shape}", flush=True)
-            elif isinstance(image, list) and len(image) > 0:
-                print(f"[DEBUG] Base output list, first item dtype: {image[0].dtype}, shape: {image[0].shape}", flush=True)
 
             # Ensure latent images have correct dtype for refiner
             if hasattr(image, 'dtype') and hasattr(image, 'to'):
