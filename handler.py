@@ -8,6 +8,7 @@ from diffusers import (
     AutoencoderKL,
 )
 from diffusers.utils import load_image
+from diffusers.utils import logging as diffusers_logging
 
 from diffusers import (
     PNDMScheduler,
@@ -24,6 +25,9 @@ from runpod.serverless.utils import rp_upload, rp_cleanup
 from runpod.serverless.utils.rp_validator import validate
 
 from schemas import INPUT_SCHEMA
+
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+diffusers_logging.disable_progress_bar()
 
 torch.cuda.empty_cache()
 
