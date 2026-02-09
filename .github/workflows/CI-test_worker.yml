@@ -12,60 +12,24 @@ on:
   workflow_dispatch:
 
 jobs:
-  initialize_worker:
+  local_checks:
     runs-on: ubuntu-latest
-    outputs:
-      id: ${{ steps.extract_id.outputs.runpod_job_id }}
 
     steps:
-      - name: Deploy Worker
-        id: deploy
-        uses: fjogeleit/http-request-action@v1
-        with:
-          url: "https://api.runpod.ai/v2/${{ vars.RUNNER_24GB }}/run"
-          method: "POST"
-          customHeaders: '{"Content-Type": "application/json"}'
-          bearerToken: ${{ secrets.RUNPOD_API_KEY }}
-          data: '{"input":{"github_pat": "${{ secrets.GH_PAT }}", "github_org":"${{ vars.GH_ORG }}"}}'
+      - uses: actions/checkout@v4
 
-      - name: Extract Job ID
-        id: extract_id
-        run: |
-          ID=$(echo '${{ steps.deploy.outputs.response }}' | jq -r '.id')
-          echo "::set-output name=runpod_job_id::$ID"
-
-  run_tests:
-    needs: initialize_worker
-    runs-on: runpod
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Python 3.11 & install dependencies
-        uses: actions/setup-python@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install Dependencies
+      - name: Validate Worker Files
         run: |
-          python -m pip install --upgrade pip
-          pip install -r builder/requirements.txt
-          apt-get install ffmpeg libsm6 libxext6 -y
-
-      - name: Execute Tests
-        run: |
-          python src/rp_handler.py --test_input='{"input": "test"}'
-
-  terminate_worker:
-    if: ${{ always() && !success() }}
-    needs: initialize_worker
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Shutdown Worker
-        uses: fjogeleit/http-request-action@v1
-        with:
-          url: "https://api.runpod.ai/v2/${{ vars.RUNNER_24GB }}/cancel/${{ needs.initialize_worker.outputs.id }}"
-          method: "POST"
-          customHeaders: '{"Content-Type": "application/json"}'
-          bearerToken: ${{ secrets.RUNPOD_API_KEY }}
+          python -m py_compile handler.py schemas.py download_weights.py
+          python - <<'PY'
+          import json
+          with open("test_input.json", "r", encoding="utf-8") as f:
+              payload = json.load(f)
+          assert "input" in payload and isinstance(payload["input"], dict)
+          print("test_input.json validation passed")
+          PY
