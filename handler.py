@@ -36,7 +36,7 @@ class ModelHandler:
     def __init__(self):
         self.base = None
         self.refiner = None
-        self.load_models()
+        self.load_base_model()
 
     def load_base(self):
         vae = AutoencoderKL.from_pretrained(
@@ -55,7 +55,7 @@ class ModelHandler:
         ).to("cuda")
 
         base_pipe.enable_xformers_memory_efficient_attention()
-        base_pipe.enable_model_cpu_offload()
+        base_pipe.enable_vae_slicing()
         base_pipe.set_progress_bar_config(disable=True)
 
         return base_pipe
@@ -77,14 +77,18 @@ class ModelHandler:
         ).to("cuda")
 
         refiner_pipe.enable_xformers_memory_efficient_attention()
-        refiner_pipe.enable_model_cpu_offload()
+        refiner_pipe.enable_vae_slicing()
         refiner_pipe.set_progress_bar_config(disable=True)
 
         return refiner_pipe
 
-    def load_models(self):
+    def load_base_model(self):
         self.base = self.load_base()
-        self.refiner = self.load_refiner()
+
+    def get_refiner(self):
+        if self.refiner is None:
+            self.refiner = self.load_refiner()
+        return self.refiner
 
 
 MODELS = ModelHandler()
@@ -155,8 +159,9 @@ def generate_image(job):
 
     try:
         if use_starting_image:
+            refiner = MODELS.get_refiner()
             init_image = load_image(starting_image).convert("RGB")
-            refiner_result = MODELS.refiner(
+            refiner_result = refiner(
                 prompt=job_input["prompt"],
                 num_inference_steps=job_input["refiner_inference_steps"],
                 strength=job_input["strength"],
@@ -165,10 +170,8 @@ def generate_image(job):
             )
             output = refiner_result.images
         else:
-            denoising_end = job_input["high_noise_frac"]
-            if denoising_end is None:
-                denoising_end = 0.8
-
+            # Fast path for build tests and normal txt2img:
+            # use SDXL base directly and skip refiner.
             base_result = MODELS.base(
                 prompt=job_input["prompt"],
                 negative_prompt=job_input["negative_prompt"],
@@ -176,27 +179,11 @@ def generate_image(job):
                 width=job_input["width"],
                 num_inference_steps=job_input["num_inference_steps"],
                 guidance_scale=job_input["guidance_scale"],
-                denoising_end=denoising_end,
-                output_type="latent",
+                output_type="pil",
                 num_images_per_prompt=job_input["num_images"],
                 generator=generator,
             )
-
-            image = base_result.images
-            if hasattr(image, "to"):
-                image = image.to(dtype=torch.float16)
-            elif isinstance(image, list) and len(image) > 0 and hasattr(image[0], "to"):
-                image = [img.to(dtype=torch.float16) for img in image]
-
-            refiner_result = MODELS.refiner(
-                prompt=job_input["prompt"],
-                num_inference_steps=job_input["refiner_inference_steps"],
-                strength=job_input["strength"],
-                image=image,
-                num_images_per_prompt=job_input["num_images"],
-                generator=generator,
-            )
-            output = refiner_result.images
+            output = base_result.images
 
     except RuntimeError as err:
         return {
