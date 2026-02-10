@@ -1,10 +1,10 @@
 {
   "tests": [
     {
-      "name": "basic_test",
+      "name": "basic_txt2img",
       "input": {
-        "prompt": "a majestic steampunk dragon soaring through a cloudy sky, intricate clockwork details, golden hour lighting, highly detailed",
-        "negative_prompt": "blurry, very low quality, deformed, ugly, text, watermark, signature",
+        "prompt": "a small cat sitting on a table",
+        "negative_prompt": "blurry, low quality",
         "height": 128,
         "width": 128,
         "num_inference_steps": 2,
@@ -12,39 +12,16 @@
         "guidance_scale": 7.5,
         "strength": 0.3,
         "high_noise_frac": 0.8,
-        "seed": 1337,
+        "seed": 42,
         "scheduler": "DDIM",
-        "num_images": 1,
-        "image_url": null
+        "num_images": 1
       },
-      "timeout": 180000
+      "timeout": 300000
     }
   ],
   "config": {
     "gpuTypeId": "NVIDIA RTX A4000",
     "gpuCount": 1,
-    "env": [
-      {
-        "key": "RUNPOD_BUILD_TEST_MODE",
-        "value": "1"
-      },
-      {
-        "key": "HEALTH_CHECK_INIT_FAST_MODE",
-        "value": "true"
-      },
-      {
-        "key": "HEALTH_CHECK_INTERVAL_SECONDS",
-        "value": "5"
-      },
-      {
-        "key": "SCALING_MIN_QUEUE_TIME_MS",
-        "value": "1000"
-      },
-      {
-        "key": "SCALING_THRESHOLD_BUFFER_MS",
-        "value": "5000"
-      }
-    ],
     "allowedCudaVersions": [
       "12.7",
       "12.6",

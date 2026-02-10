@@ -31,13 +31,7 @@ diffusers_logging.disable_progress_bar()
 
 torch.cuda.empty_cache()
 
-BUILD_TEST_MODE_ENV = "RUNPOD_BUILD_TEST_MODE"
 LOCAL_FILES_ONLY_ENV = "LOCAL_FILES_ONLY"
-# 1x1 transparent PNG to satisfy build-test output schema quickly.
-BUILD_TEST_IMAGE_DATA_URL = (
-    "data:image/png;base64,"
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4////fwAJ+wP9KobjigAAAABJRU5ErkJggg=="
-)
 
 
 class ModelHandler:
@@ -149,20 +143,8 @@ def make_scheduler(name, config):
     return scheduler_map.get(name, DDIMScheduler.from_config(config))
 
 
-def _is_build_test_mode():
-    return os.environ.get(BUILD_TEST_MODE_ENV, "").strip() == "1"
-
-
 def _local_files_only():
-    return os.environ.get(LOCAL_FILES_ONLY_ENV, "").strip() == "1"
-
-
-def _build_test_result(seed):
-    return {
-        "images": [BUILD_TEST_IMAGE_DATA_URL],
-        "image_url": BUILD_TEST_IMAGE_DATA_URL,
-        "seed": seed,
-    }
+    return os.environ.get(LOCAL_FILES_ONLY_ENV, "1").strip() == "1"
 
 
 @torch.inference_mode()
@@ -179,13 +161,6 @@ def generate_image(job):
     if seed is None:
         seed = int.from_bytes(os.urandom(2), "big")
         job_input["seed"] = seed
-
-    if _is_build_test_mode():
-        print(
-            f"[build-test-mode] returning stub image for request {job.get('id', 'unknown')}",
-            flush=True,
-        )
-        return _build_test_result(seed)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     generator = torch.Generator(device).manual_seed(seed)
