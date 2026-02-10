@@ -31,6 +31,13 @@ diffusers_logging.disable_progress_bar()
 
 torch.cuda.empty_cache()
 
+BUILD_TEST_MODE_ENV = "RUNPOD_BUILD_TEST_MODE"
+# 1x1 transparent PNG to satisfy build-test output schema quickly.
+BUILD_TEST_IMAGE_DATA_URL = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4////fwAJ+wP9KobjigAAAABJRU5ErkJggg=="
+)
+
 
 class ModelHandler:
     def __init__(self):
@@ -91,7 +98,14 @@ class ModelHandler:
         return self.refiner
 
 
-MODELS = ModelHandler()
+MODELS = None
+
+
+def _get_models():
+    global MODELS
+    if MODELS is None:
+        MODELS = ModelHandler()
+    return MODELS
 
 
 def _job_tmp_dir(job_id):
@@ -132,6 +146,18 @@ def make_scheduler(name, config):
     return scheduler_map.get(name, DDIMScheduler.from_config(config))
 
 
+def _is_build_test_mode():
+    return os.environ.get(BUILD_TEST_MODE_ENV, "").strip() == "1"
+
+
+def _build_test_result(seed):
+    return {
+        "images": [BUILD_TEST_IMAGE_DATA_URL],
+        "image_url": BUILD_TEST_IMAGE_DATA_URL,
+        "seed": seed,
+    }
+
+
 @torch.inference_mode()
 def generate_image(job):
     job_input = job.get("input", {})
@@ -147,11 +173,15 @@ def generate_image(job):
         seed = int.from_bytes(os.urandom(2), "big")
         job_input["seed"] = seed
 
+    if _is_build_test_mode():
+        return _build_test_result(seed)
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     generator = torch.Generator(device).manual_seed(seed)
 
-    MODELS.base.scheduler = make_scheduler(
-        job_input["scheduler"], MODELS.base.scheduler.config
+    models = _get_models()
+    models.base.scheduler = make_scheduler(
+        job_input["scheduler"], models.base.scheduler.config
     )
 
     starting_image = job_input.get("image_url")
@@ -159,7 +189,7 @@ def generate_image(job):
 
     try:
         if use_starting_image:
-            refiner = MODELS.get_refiner()
+            refiner = models.get_refiner()
             init_image = load_image(starting_image).convert("RGB")
             refiner_result = refiner(
                 prompt=job_input["prompt"],
@@ -170,9 +200,9 @@ def generate_image(job):
             )
             output = refiner_result.images
         else:
-            # Fast path for build tests and normal txt2img:
+            # Fast path for normal txt2img:
             # use SDXL base directly and skip refiner.
-            base_result = MODELS.base(
+            base_result = models.base(
                 prompt=job_input["prompt"],
                 negative_prompt=job_input["negative_prompt"],
                 height=job_input["height"],

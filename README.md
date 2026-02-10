@@ -80,6 +80,7 @@ and when you convert the base64-encoded image into an actual image, it looks lik
 ## RunPod Build-Test Notes
 
 The `.runpod/tests.json` smoke test is intentionally lightweight (`128x128`, `2` steps) so endpoint initialization stays fast and stable.
+It also sets `RUNPOD_BUILD_TEST_MODE=1`, which returns a tiny valid image payload without loading SDXL weights during build-test.
 
 You may not see the old `Loading pipeline...` progress bars in logs anymore because progress bars are explicitly disabled in `handler.py` and smoke test settings are tuned for startup speed.
 
