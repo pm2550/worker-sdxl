@@ -4,12 +4,6 @@ accelerate==1.7.0
 safetensors==0.5.3
 xformers==0.0.30
 runpod==1.7.9
-torch==2.7.0
-torchvision
 numpy>=1.24.0
 scipy
-triton
 huggingface-hub
-hf_transfer
-hf_xet
-setuptools 

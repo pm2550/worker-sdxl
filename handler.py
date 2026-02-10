@@ -32,6 +32,7 @@ diffusers_logging.disable_progress_bar()
 torch.cuda.empty_cache()
 
 BUILD_TEST_MODE_ENV = "RUNPOD_BUILD_TEST_MODE"
+LOCAL_FILES_ONLY_ENV = "LOCAL_FILES_ONLY"
 # 1x1 transparent PNG to satisfy build-test output schema quickly.
 BUILD_TEST_IMAGE_DATA_URL = (
     "data:image/png;base64,"
@@ -46,10 +47,11 @@ class ModelHandler:
         self.load_base_model()
 
     def load_base(self):
+        local_files_only = _local_files_only()
         vae = AutoencoderKL.from_pretrained(
             "madebyollin/sdxl-vae-fp16-fix",
             torch_dtype=torch.float16,
-            local_files_only=True,
+            local_files_only=local_files_only,
         )
         base_pipe = StableDiffusionXLPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
@@ -58,7 +60,7 @@ class ModelHandler:
             variant="fp16",
             use_safetensors=True,
             add_watermarker=False,
-            local_files_only=True,
+            local_files_only=local_files_only,
         ).to("cuda")
 
         base_pipe.enable_xformers_memory_efficient_attention()
@@ -68,10 +70,11 @@ class ModelHandler:
         return base_pipe
 
     def load_refiner(self):
+        local_files_only = _local_files_only()
         vae = AutoencoderKL.from_pretrained(
             "madebyollin/sdxl-vae-fp16-fix",
             torch_dtype=torch.float16,
-            local_files_only=True,
+            local_files_only=local_files_only,
         )
         refiner_pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-refiner-1.0",
@@ -80,7 +83,7 @@ class ModelHandler:
             variant="fp16",
             use_safetensors=True,
             add_watermarker=False,
-            local_files_only=True,
+            local_files_only=local_files_only,
         ).to("cuda")
 
         refiner_pipe.enable_xformers_memory_efficient_attention()
@@ -148,6 +151,10 @@ def make_scheduler(name, config):
 
 def _is_build_test_mode():
     return os.environ.get(BUILD_TEST_MODE_ENV, "").strip() == "1"
+
+
+def _local_files_only():
+    return os.environ.get(LOCAL_FILES_ONLY_ENV, "").strip() == "1"
 
 
 def _build_test_result(seed):
