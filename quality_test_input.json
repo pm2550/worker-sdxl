@@ -1,0 +1,17 @@
+{
+  "input": {
+    "prompt": "a futuristic city skyline at sunrise, ultra detailed, cinematic lighting",
+    "negative_prompt": "blurry, low quality, deformed, ugly, text, watermark, signature",
+    "height": 512,
+    "width": 512,
+    "num_inference_steps": 10,
+    "refiner_inference_steps": 10,
+    "guidance_scale": 7.5,
+    "strength": 0.3,
+    "high_noise_frac": 0.8,
+    "seed": 1337,
+    "scheduler": "DDIM",
+    "num_images": 1,
+    "image_url": null
+  }
+}

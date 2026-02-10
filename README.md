@@ -76,3 +76,27 @@ which is producing an output like this:
 and when you convert the base64-encoded image into an actual image, it looks like this:
 
 <img src="https://cpjrphpz3t5wbwfe.public.blob.vercel-storage.com/worker-sdxl_output_1-AedTpZlz1eIwIgAEShlod6syLo6Jq6.jpeg" alt="SDXL Generated Image: 'A majestic steampunk dragon soaring through a cloudy sky, intricate clockwork details, golden hour lighting, highly detailed'" width="512" height="512">
+
+## RunPod Build-Test Notes
+
+The `.runpod/tests.json` smoke test is intentionally lightweight (`128x128`, `2` steps) so endpoint initialization stays fast and stable.
+
+You may not see the old `Loading pipeline...` progress bars in logs anymore because progress bars are explicitly disabled in `handler.py` and smoke test settings are tuned for startup speed.
+
+## Manual Quality Validation
+
+Use `quality_test_input.json` and `scripts/runpod_quality_check.py` to run a higher-quality sanity check (`512x512`, `10` steps, `DDIM`) against a real endpoint without blocking normal push workflows.
+
+Local run:
+
+```bash
+export RUNPOD_API_KEY=<your_api_key>
+export RUNPOD_ENDPOINT_ID=<your_endpoint_id>
+python scripts/runpod_quality_check.py --test-input quality_test_input.json
+```
+
+GitHub Actions run:
+
+1. Add repository secrets `RUNPOD_API_KEY` and `RUNPOD_ENDPOINT_ID`.
+2. Open Actions -> `CI | RunPod Quality Check`.
+3. Click `Run workflow` to trigger the manual quality check.
