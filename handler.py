@@ -174,6 +174,10 @@ def generate_image(job):
         job_input["seed"] = seed
 
     if _is_build_test_mode():
+        print(
+            f"[build-test-mode] returning stub image for request {job.get('id', 'unknown')}",
+            flush=True,
+        )
         return _build_test_result(seed)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"

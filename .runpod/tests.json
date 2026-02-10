@@ -27,6 +27,22 @@
       {
         "key": "RUNPOD_BUILD_TEST_MODE",
         "value": "1"
+      },
+      {
+        "key": "HEALTH_CHECK_INIT_FAST_MODE",
+        "value": "true"
+      },
+      {
+        "key": "HEALTH_CHECK_INTERVAL_SECONDS",
+        "value": "5"
+      },
+      {
+        "key": "SCALING_MIN_QUEUE_TIME_MS",
+        "value": "1000"
+      },
+      {
+        "key": "SCALING_THRESHOLD_BUFFER_MS",
+        "value": "5000"
       }
     ],
     "allowedCudaVersions": [
