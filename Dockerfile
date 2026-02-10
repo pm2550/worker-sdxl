@@ -3,6 +3,11 @@ FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
 # install python 3.11 and pip
 ENV DEBIAN_FRONTEND=noninteractive
+ENV GIN_MODE=release \
+    HEALTH_CHECK_INIT_FAST_MODE=false \
+    HEALTH_CHECK_INTERVAL_SECONDS=20 \
+    SCALING_MIN_QUEUE_TIME_MS=40000 \
+    SCALING_THRESHOLD_BUFFER_MS=120000
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
     && add-apt-repository ppa:deadsnakes/ppa \
