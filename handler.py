@@ -57,7 +57,6 @@ class ModelHandler:
             local_files_only=local_files_only,
         ).to("cuda")
 
-        base_pipe.enable_xformers_memory_efficient_attention()
         base_pipe.enable_vae_slicing()
         base_pipe.set_progress_bar_config(disable=True)
 
@@ -80,7 +79,6 @@ class ModelHandler:
             local_files_only=local_files_only,
         ).to("cuda")
 
-        refiner_pipe.enable_xformers_memory_efficient_attention()
         refiner_pipe.enable_vae_slicing()
         refiner_pipe.set_progress_bar_config(disable=True)
 
