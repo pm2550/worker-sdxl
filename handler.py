@@ -1,5 +1,6 @@
 import os
 import base64
+import time
 
 import torch
 from diffusers import (
@@ -26,12 +27,21 @@ from runpod.serverless.utils.rp_validator import validate
 
 from schemas import INPUT_SCHEMA
 
+
+def _log(msg):
+    print(f"[handler] {msg}", flush=True)
+
+
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 diffusers_logging.disable_progress_bar()
 
 torch.cuda.empty_cache()
 
 LOCAL_FILES_ONLY_ENV = "LOCAL_FILES_ONLY"
+
+_log(f"Module loaded. CUDA available: {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    _log(f"GPU: {torch.cuda.get_device_name(0)}, VRAM: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB")
 
 
 class ModelHandler:
@@ -42,11 +52,17 @@ class ModelHandler:
 
     def load_base(self):
         local_files_only = _local_files_only()
+        _log(f"Loading VAE (local_files_only={local_files_only})...")
+        t0 = time.time()
         vae = AutoencoderKL.from_pretrained(
             "madebyollin/sdxl-vae-fp16-fix",
             torch_dtype=torch.float16,
             local_files_only=local_files_only,
         )
+        _log(f"VAE loaded in {time.time() - t0:.1f}s")
+
+        _log("Loading SDXL base pipeline...")
+        t0 = time.time()
         base_pipe = StableDiffusionXLPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
             vae=vae,
@@ -56,6 +72,7 @@ class ModelHandler:
             add_watermarker=False,
             local_files_only=local_files_only,
         ).to("cuda")
+        _log(f"SDXL base loaded to GPU in {time.time() - t0:.1f}s")
 
         base_pipe.enable_vae_slicing()
         base_pipe.set_progress_bar_config(disable=True)
@@ -64,6 +81,8 @@ class ModelHandler:
 
     def load_refiner(self):
         local_files_only = _local_files_only()
+        _log("Loading refiner pipeline...")
+        t0 = time.time()
         vae = AutoencoderKL.from_pretrained(
             "madebyollin/sdxl-vae-fp16-fix",
             torch_dtype=torch.float16,
@@ -78,6 +97,7 @@ class ModelHandler:
             add_watermarker=False,
             local_files_only=local_files_only,
         ).to("cuda")
+        _log(f"Refiner loaded to GPU in {time.time() - t0:.1f}s")
 
         refiner_pipe.enable_vae_slicing()
         refiner_pipe.set_progress_bar_config(disable=True)
@@ -85,7 +105,9 @@ class ModelHandler:
         return refiner_pipe
 
     def load_base_model(self):
+        _log("load_base_model() called")
         self.base = self.load_base()
+        _log("load_base_model() done")
 
     def get_refiner(self):
         if self.refiner is None:
@@ -99,7 +121,9 @@ MODELS = None
 def _get_models():
     global MODELS
     if MODELS is None:
+        _log("First call - creating ModelHandler...")
         MODELS = ModelHandler()
+        _log("ModelHandler created successfully")
     return MODELS
 
 
@@ -147,32 +171,39 @@ def _local_files_only():
 
 @torch.inference_mode()
 def generate_image(job):
-    job_input = job.get("input", {})
-    validated_input = validate(job_input, INPUT_SCHEMA)
-
-    if "errors" in validated_input:
-        return {"error": validated_input["errors"]}
-
-    job_input = validated_input["validated_input"]
-
-    seed = job_input["seed"]
-    if seed is None:
-        seed = int.from_bytes(os.urandom(2), "big")
-        job_input["seed"] = seed
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    generator = torch.Generator(device).manual_seed(seed)
-
-    models = _get_models()
-    models.base.scheduler = make_scheduler(
-        job_input["scheduler"], models.base.scheduler.config
-    )
-
-    starting_image = job_input.get("image_url")
-    use_starting_image = bool(starting_image)
+    job_id = job.get("id", "unknown")
+    _log(f"generate_image called, job_id={job_id}")
+    t_start = time.time()
 
     try:
+        job_input = job.get("input", {})
+        validated_input = validate(job_input, INPUT_SCHEMA)
+
+        if "errors" in validated_input:
+            _log(f"Validation errors: {validated_input['errors']}")
+            return {"error": validated_input["errors"]}
+
+        job_input = validated_input["validated_input"]
+
+        seed = job_input["seed"]
+        if seed is None:
+            seed = int.from_bytes(os.urandom(2), "big")
+            job_input["seed"] = seed
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        generator = torch.Generator(device).manual_seed(seed)
+
+        _log("Loading models...")
+        models = _get_models()
+        models.base.scheduler = make_scheduler(
+            job_input["scheduler"], models.base.scheduler.config
+        )
+
+        starting_image = job_input.get("image_url")
+        use_starting_image = bool(starting_image)
+
         if use_starting_image:
+            _log("Running img2img with refiner...")
             refiner = models.get_refiner()
             init_image = load_image(starting_image).convert("RGB")
             refiner_result = refiner(
@@ -184,8 +215,8 @@ def generate_image(job):
             )
             output = refiner_result.images
         else:
-            # Fast path for normal txt2img:
-            # use SDXL base directly and skip refiner.
+            _log(f"Running txt2img: {job_input['width']}x{job_input['height']}, "
+                 f"steps={job_input['num_inference_steps']}, seed={seed}")
             base_result = models.base(
                 prompt=job_input["prompt"],
                 negative_prompt=job_input["negative_prompt"],
@@ -199,29 +230,33 @@ def generate_image(job):
             )
             output = base_result.images
 
-    except RuntimeError as err:
-        return {
-            "error": f"RuntimeError: {err}",
-            "refresh_worker": True,
+        _log(f"Inference done, {len(output)} image(s) generated")
+
+        image_urls = _save_and_upload_images(output, job_id)
+        _log(f"Images saved, {len(image_urls)} url(s), "
+             f"first url type: {'base64' if image_urls[0].startswith('data:') else 'url'}")
+
+        results = {
+            "images": image_urls,
+            "image_url": image_urls[0],
+            "seed": job_input["seed"],
         }
+
+        if use_starting_image:
+            results["refresh_worker"] = True
+
+        elapsed = time.time() - t_start
+        _log(f"SUCCESS in {elapsed:.1f}s, returning keys={list(results.keys())}")
+        return results
+
     except Exception as err:
+        elapsed = time.time() - t_start
+        _log(f"ERROR in {elapsed:.1f}s: {type(err).__name__}: {err}")
         return {
-            "error": f"Unexpected error: {err}",
+            "error": f"{type(err).__name__}: {err}",
             "refresh_worker": True,
         }
 
-    image_urls = _save_and_upload_images(output, job["id"])
 
-    results = {
-        "images": image_urls,
-        "image_url": image_urls[0],
-        "seed": job_input["seed"],
-    }
-
-    if use_starting_image:
-        results["refresh_worker"] = True
-
-    return results
-
-
+_log("Starting RunPod serverless worker...")
 runpod.serverless.start({"handler": generate_image})
