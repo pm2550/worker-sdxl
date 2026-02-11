@@ -1,4 +1,5 @@
 import os
+import atexit
 import base64
 import time
 
@@ -32,10 +33,13 @@ def _log(msg):
     print(f"[handler] {msg}", flush=True)
 
 
+atexit.register(lambda: _log("Python process exiting (atexit)"))
+
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 diffusers_logging.disable_progress_bar()
 
-torch.cuda.empty_cache()
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
 
 LOCAL_FILES_ONLY_ENV = "LOCAL_FILES_ONLY"
 
@@ -43,6 +47,30 @@ _log(f"Module loaded. CUDA available: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
     _log(f"GPU: {torch.cuda.get_device_name(0)}, VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 
+
+def _local_files_only():
+    return os.environ.get(LOCAL_FILES_ONLY_ENV, "1").strip() == "1"
+
+
+# --- Scheduler helpers (only instantiate the one we need) ---
+
+SCHEDULER_MAP = {
+    "PNDM": PNDMScheduler,
+    "KLMS": LMSDiscreteScheduler,
+    "DDIM": DDIMScheduler,
+    "K_EULER": EulerDiscreteScheduler,
+    "K_EULER_ANCESTRAL": EulerAncestralDiscreteScheduler,
+    "DPMSolverMultistep": DPMSolverMultistepScheduler,
+    "DPMSolverSinglestep": DPMSolverSinglestepScheduler,
+}
+
+
+def make_scheduler(name, config):
+    scheduler_cls = SCHEDULER_MAP.get(name, DDIMScheduler)
+    return scheduler_cls.from_config(config)
+
+
+# --- Model loading (eager, at module level, matching official RunPod worker) ---
 
 class ModelHandler:
     def __init__(self):
@@ -115,17 +143,13 @@ class ModelHandler:
         return self.refiner
 
 
-MODELS = None
+_log("Eagerly loading models at startup...")
+t_model_start = time.time()
+MODELS = ModelHandler()
+_log(f"Models loaded in {time.time() - t_model_start:.1f}s")
 
 
-def _get_models():
-    global MODELS
-    if MODELS is None:
-        _log("First call - creating ModelHandler...")
-        MODELS = ModelHandler()
-        _log("ModelHandler created successfully")
-    return MODELS
-
+# --- Helpers ---
 
 def _job_tmp_dir(job_id):
     return os.path.join("/tmp", str(job_id))
@@ -152,22 +176,7 @@ def _save_and_upload_images(images, job_id):
     return image_urls
 
 
-def make_scheduler(name, config):
-    scheduler_map = {
-        "PNDM": PNDMScheduler.from_config(config),
-        "KLMS": LMSDiscreteScheduler.from_config(config),
-        "DDIM": DDIMScheduler.from_config(config),
-        "K_EULER": EulerDiscreteScheduler.from_config(config),
-        "K_EULER_ANCESTRAL": EulerAncestralDiscreteScheduler.from_config(config),
-        "DPMSolverMultistep": DPMSolverMultistepScheduler.from_config(config),
-        "DPMSolverSinglestep": DPMSolverSinglestepScheduler.from_config(config),
-    }
-    return scheduler_map.get(name, DDIMScheduler.from_config(config))
-
-
-def _local_files_only():
-    return os.environ.get(LOCAL_FILES_ONLY_ENV, "1").strip() == "1"
-
+# --- Handler ---
 
 @torch.inference_mode()
 def generate_image(job):
@@ -193,10 +202,8 @@ def generate_image(job):
         device = "cuda" if torch.cuda.is_available() else "cpu"
         generator = torch.Generator(device).manual_seed(seed)
 
-        _log("Loading models...")
-        models = _get_models()
-        models.base.scheduler = make_scheduler(
-            job_input["scheduler"], models.base.scheduler.config
+        MODELS.base.scheduler = make_scheduler(
+            job_input["scheduler"], MODELS.base.scheduler.config
         )
 
         starting_image = job_input.get("image_url")
@@ -204,7 +211,7 @@ def generate_image(job):
 
         if use_starting_image:
             _log("Running img2img with refiner...")
-            refiner = models.get_refiner()
+            refiner = MODELS.get_refiner()
             init_image = load_image(starting_image).convert("RGB")
             refiner_result = refiner(
                 prompt=job_input["prompt"],
@@ -217,7 +224,7 @@ def generate_image(job):
         else:
             _log(f"Running txt2img: {job_input['width']}x{job_input['height']}, "
                  f"steps={job_input['num_inference_steps']}, seed={seed}")
-            base_result = models.base(
+            base_result = MODELS.base(
                 prompt=job_input["prompt"],
                 negative_prompt=job_input["negative_prompt"],
                 height=job_input["height"],
