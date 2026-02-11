@@ -41,7 +41,7 @@ LOCAL_FILES_ONLY_ENV = "LOCAL_FILES_ONLY"
 
 _log(f"Module loaded. CUDA available: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
-    _log(f"GPU: {torch.cuda.get_device_name(0)}, VRAM: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB")
+    _log(f"GPU: {torch.cuda.get_device_name(0)}, VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 
 
 class ModelHandler:
