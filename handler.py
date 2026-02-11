@@ -161,16 +161,17 @@ def _save_and_upload_images(images, job_id):
 
     image_urls = []
     for index, image in enumerate(images):
-        image_path = os.path.join(output_dir, f"{index}.png")
-        image.save(image_path)
-
         if os.environ.get("BUCKET_ENDPOINT_URL", False):
+            image_path = os.path.join(output_dir, f"{index}.png")
+            image.save(image_path)
             image_url = rp_upload.upload_image(job_id, image_path)
             image_urls.append(image_url)
         else:
+            image_path = os.path.join(output_dir, f"{index}.jpg")
+            image.save(image_path, format="JPEG", quality=85)
             with open(image_path, "rb") as image_file:
                 image_data = base64.b64encode(image_file.read()).decode("utf-8")
-                image_urls.append(f"data:image/png;base64,{image_data}")
+                image_urls.append(f"data:image/jpeg;base64,{image_data}")
 
     rp_cleanup.clean([output_dir])
     return image_urls
