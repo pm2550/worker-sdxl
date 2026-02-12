@@ -121,9 +121,11 @@ def _save_and_upload_images(images, job_id):
             image_url = rp_upload.upload_image(job_id, image_path)
             image_urls.append(image_url)
         else:
-            with open(image_path, "rb") as image_file:
+            jpg_path = image_path.replace(".png", ".jpg")
+            image.save(jpg_path, format="JPEG", quality=85)
+            with open(jpg_path, "rb") as image_file:
                 image_data = base64.b64encode(image_file.read()).decode("utf-8")
-                image_urls.append(f"data:image/png;base64,{image_data}")
+                image_urls.append(f"data:image/jpeg;base64,{image_data}")
 
     rp_cleanup.clean([f"/{job_id}"])
     return image_urls
