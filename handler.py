@@ -1,21 +1,13 @@
 """
 RunPod Serverless handler for SDXL image generation.
-Diagnostic build: returns minimal response (no base64) to test result delivery.
 """
 
 import os
 import sys
+import io
 import base64
+import json
 import time
-import logging
-
-# Enable DEBUG logging to see RunPod SDK internals
-logging.basicConfig(
-    level=logging.DEBUG,
-    stream=sys.stdout,
-    format="%(asctime)s %(name)s %(levelname)s %(message)s",
-    force=True,
-)
 
 import torch
 from diffusers import (
@@ -42,6 +34,11 @@ from runpod.serverless.utils.rp_validator import validate
 from schemas import INPUT_SCHEMA
 
 torch.cuda.empty_cache()
+
+# Maximum base64 response size (bytes) for inline delivery.
+# RunPod's result delivery pipeline has undocumented size limits;
+# responses over ~100KB fail silently. Use bucket upload for large images.
+MAX_INLINE_B64_SIZE = 75_000
 
 
 class ModelHandler:
@@ -100,20 +97,44 @@ class ModelHandler:
 MODELS = ModelHandler()
 
 
+def _image_to_b64(image, quality=80):
+    """Convert PIL image to base64 JPEG string."""
+    buf = io.BytesIO()
+    image.save(buf, format="JPEG", quality=quality)
+    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    return f"data:image/jpeg;base64,{b64}", len(b64)
+
+
 def _save_and_upload_images(images, job_id):
+    """
+    Save images and return URLs.
+
+    With BUCKET_ENDPOINT_URL configured: uploads to S3-compatible bucket, returns URLs.
+    Without bucket: returns base64 JPEG inline (auto-compressed to fit delivery limits).
+    """
     os.makedirs(f"/{job_id}", exist_ok=True)
     image_urls = []
-    for index, image in enumerate(images):
-        image_path = os.path.join(f"/{job_id}", f"{index}.png")
-        image.save(image_path)
+    has_bucket = bool(os.environ.get("BUCKET_ENDPOINT_URL"))
 
-        if os.environ.get("BUCKET_ENDPOINT_URL", False):
+    for index, image in enumerate(images):
+        if has_bucket:
+            image_path = os.path.join(f"/{job_id}", f"{index}.png")
+            image.save(image_path)
             image_url = rp_upload.upload_image(job_id, image_path)
             image_urls.append(image_url)
         else:
-            with open(image_path, "rb") as image_file:
-                image_data = base64.b64encode(image_file.read()).decode("utf-8")
-                image_urls.append(f"data:image/png;base64,{image_data}")
+            # No bucket: try inline base64 with progressive compression
+            for q in (80, 60, 40):
+                b64_url, b64_len = _image_to_b64(image, quality=q)
+                if b64_len <= MAX_INLINE_B64_SIZE:
+                    image_urls.append(b64_url)
+                    break
+            else:
+                # Still too large - resize and compress aggressively
+                thumb = image.copy()
+                thumb.thumbnail((256, 256))
+                b64_url, _ = _image_to_b64(thumb, quality=60)
+                image_urls.append(b64_url)
 
     rp_cleanup.clean([f"/{job_id}"])
     return image_urls
@@ -133,16 +154,11 @@ def make_scheduler(name, config):
 
 @torch.inference_mode()
 def generate_image(job):
-    job_id = job.get("id", "unknown")
-    print(f"[handler] === Job {job_id} START ===", flush=True)
-    t_start = time.time()
-
     job_input = job["input"]
 
     validated_input = validate(job_input, INPUT_SCHEMA)
 
     if "errors" in validated_input:
-        print(f"[handler] Validation errors: {validated_input['errors']}", flush=True)
         return {"error": validated_input["errors"]}
     job_input = validated_input["validated_input"]
 
@@ -168,9 +184,6 @@ def generate_image(job):
             generator=generator,
         ).images
     else:
-        print(f"[handler] txt2img: {job_input['width']}x{job_input['height']}, "
-              f"steps={job_input['num_inference_steps']}, seed={job_input['seed']}", flush=True)
-
         image = MODELS.base(
             prompt=job_input["prompt"],
             negative_prompt=job_input["negative_prompt"],
@@ -193,23 +206,18 @@ def generate_image(job):
             generator=generator,
         ).images
 
-    # DIAGNOSTIC: Return minimal response WITHOUT base64 image data.
-    # This tests whether result delivery works when response is tiny.
-    # If this passes, the issue is response size/content.
-    # If this fails, the issue is infrastructure/SDK.
-    elapsed = time.time() - t_start
-    result = {
+    image_urls = _save_and_upload_images(output, job["id"])
+
+    results = {
+        "images": image_urls,
+        "image_url": image_urls[0],
         "seed": job_input["seed"],
-        "image_count": len(output),
-        "elapsed_seconds": round(elapsed, 2),
-        "diagnostic": "minimal_response_test",
     }
-    print(f"[handler] === Job {job_id} DONE in {elapsed:.1f}s, returning: {result} ===", flush=True)
 
     if starting_image:
-        result["refresh_worker"] = True
+        results["refresh_worker"] = True
 
-    return result
+    return results
 
 
 runpod.serverless.start({"handler": generate_image})
