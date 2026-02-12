@@ -17,7 +17,7 @@
         "num_images": 1,
         "image_url": null
       },
-      "timeout": 10000
+      "timeout": 120000
     }
   ],
   "config": {
