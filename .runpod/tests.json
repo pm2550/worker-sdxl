@@ -1,20 +1,21 @@
 {
   "tests": [
     {
-      "name": "basic_txt2img",
+      "name": "basic_test",
       "input": {
-        "prompt": "a small cat sitting on a table",
-        "negative_prompt": "blurry, low quality",
-        "height": 512,
-        "width": 512,
-        "num_inference_steps": 2,
-        "refiner_inference_steps": 2,
+        "prompt": "a majestic steampunk dragon soaring through a cloudy sky, intricate clockwork details, golden hour lighting, highly detailed",
+        "negative_prompt": "blurry, very low quality, deformed, ugly, text, watermark, signature,",
+        "height": 1024,
+        "width": 1024,
+        "num_inference_steps": 25,
+        "refiner_inference_steps": 50,
         "guidance_scale": 7.5,
         "strength": 0.3,
         "high_noise_frac": 0.8,
-        "seed": 42,
-        "scheduler": "DDIM",
-        "num_images": 1
+        "seed": 1337,
+        "scheduler": "K_EULER",
+        "num_images": 1,
+        "image_url": null
       },
       "timeout": 10000
     }

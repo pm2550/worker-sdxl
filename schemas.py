@@ -11,12 +11,12 @@ INPUT_SCHEMA = {
     'height': {
         'type': int,
         'required': False,
-        'default': 128
+        'default': 1024
     },
     'width': {
         'type': int,
         'required': False,
-        'default': 128
+        'default': 1024
     },
     'seed': {
         'type': int,
@@ -31,12 +31,12 @@ INPUT_SCHEMA = {
     'num_inference_steps': {
         'type': int,
         'required': False,
-        'default': 2
+        'default': 25
     },
     'refiner_inference_steps': {
         'type': int,
         'required': False,
-        'default': 2
+        'default': 50
     },
     'guidance_scale': {
         'type': float,
@@ -62,6 +62,6 @@ INPUT_SCHEMA = {
     'high_noise_frac': {
         'type': float,
         'required': False,
-        'default': 0.8
+        'default': None
     },
 }
