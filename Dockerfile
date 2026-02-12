@@ -27,4 +27,4 @@ COPY download_weights.py schemas.py handler.py test_input.json /
 # Pre-download SDXL weights so the container can run inference offline
 RUN python /download_weights.py
 
-CMD python -u /handler.py
+CMD ["python", "-u", "/handler.py"]

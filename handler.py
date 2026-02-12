@@ -250,6 +250,10 @@ def generate_image(job):
             "seed": job_input["seed"],
         }
 
+        import json
+        result_size = len(json.dumps(results))
+        _log(f"Response size: {result_size} bytes ({result_size/1024:.1f} KB)")
+
         if use_starting_image:
             results["refresh_worker"] = True
 
