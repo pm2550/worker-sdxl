@@ -104,7 +104,7 @@ def _save_and_upload_images(images, job_id):
         image.save(image_path)
 
         if has_bucket:
-            image_url = rp_upload.upload_image(job_id, image_path)
+            image_url = rp_upload.upload_image(job_id, image_path, bucket_name=os.environ.get("BUCKET_NAME", "pm2550"))
             image_urls.append(image_url)
 
     rp_cleanup.clean([f"/{job_id}"])
