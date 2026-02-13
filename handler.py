@@ -7,8 +7,12 @@ Without a bucket, only metadata (seed, dimensions) is returned.
 """
 
 import os
-import base64
 import io
+import uuid
+import logging
+
+import boto3
+from botocore.config import Config as BotoConfig
 
 import torch
 from diffusers import (
@@ -29,8 +33,9 @@ from diffusers import (
 )
 
 import runpod
-from runpod.serverless.utils import rp_upload, rp_cleanup
 from runpod.serverless.utils.rp_validator import validate
+
+logger = logging.getLogger("handler")
 
 from schemas import INPUT_SCHEMA
 
@@ -93,21 +98,48 @@ class ModelHandler:
 MODELS = ModelHandler()
 
 
+def _get_s3_client():
+    """Create boto3 S3 client for R2/S3-compatible storage."""
+    endpoint_url = os.environ.get("BUCKET_ENDPOINT_URL")
+    access_key = os.environ.get("BUCKET_ACCESS_KEY_ID")
+    secret_key = os.environ.get("BUCKET_SECRET_ACCESS_KEY")
+    if not all([endpoint_url, access_key, secret_key]):
+        return None
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint_url,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        config=BotoConfig(s3={"addressing_style": "path"}, signature_version="s3v4"),
+        region_name="auto",
+    )
+
+
+def _upload_to_bucket(image, job_id, index):
+    """Upload a PIL image to S3/R2 bucket, return public URL."""
+    s3 = _get_s3_client()
+    if not s3:
+        return None
+    bucket_name = os.environ.get("BUCKET_NAME", "pm2550")
+    key = f"{job_id}/{index}.png"
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    buf.seek(0)
+    s3.put_object(Bucket=bucket_name, Key=key, Body=buf.getvalue(), ContentType="image/png")
+    endpoint_url = os.environ.get("BUCKET_ENDPOINT_URL").rstrip("/")
+    return f"{endpoint_url}/{bucket_name}/{key}"
+
+
 def _save_and_upload_images(images, job_id):
-    """Save images and upload to bucket if configured."""
-    os.makedirs(f"/{job_id}", exist_ok=True)
+    """Upload images to bucket if configured, return URLs."""
     image_urls = []
-    has_bucket = bool(os.environ.get("BUCKET_ENDPOINT_URL"))
-
     for index, image in enumerate(images):
-        image_path = os.path.join(f"/{job_id}", f"{index}.png")
-        image.save(image_path)
-
-        if has_bucket:
-            image_url = rp_upload.upload_image(job_id, image_path, bucket_name=os.environ.get("BUCKET_NAME", "pm2550"))
-            image_urls.append(image_url)
-
-    rp_cleanup.clean([f"/{job_id}"])
+        try:
+            url = _upload_to_bucket(image, job_id, index)
+            if url:
+                image_urls.append(url)
+        except Exception as e:
+            logger.error(f"Upload failed for image {index}: {e}")
     return image_urls
 
 
