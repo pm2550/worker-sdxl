@@ -26,42 +26,22 @@ INPUT_SCHEMA = {
     'scheduler': {
         'type': str,
         'required': False,
-        'default': 'DDIM'
+        'default': 'K_EULER_ANCESTRAL'
     },
     'num_inference_steps': {
         'type': int,
         'required': False,
-        'default': 25
-    },
-    'refiner_inference_steps': {
-        'type': int,
-        'required': False,
-        'default': 50
+        'default': 28
     },
     'guidance_scale': {
         'type': float,
         'required': False,
-        'default': 7.5
-    },
-    'strength': {
-        'type': float,
-        'required': False,
-        'default': 0.3
-    },
-    'image_url': {
-        'type': str,
-        'required': False,
-        'default': None
+        'default': 5.0
     },
     'num_images': {
         'type': int,
         'required': False,
         'default': 1,
         'constraints': lambda img_count: 3 > img_count > 0
-    },
-    'high_noise_frac': {
-        'type': float,
-        'required': False,
-        'default': None
     },
 }

@@ -13,4 +13,3 @@ huggingface-hub
 hf_transfer
 hf_xet
 setuptools
-boto3

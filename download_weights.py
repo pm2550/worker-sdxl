@@ -1,9 +1,5 @@
 import torch
-from diffusers import (
-    StableDiffusionXLPipeline,
-    StableDiffusionXLImg2ImgPipeline,
-    AutoencoderKL,
-)
+from diffusers import StableDiffusionXLPipeline
 
 
 def fetch_pretrained_model(model_class, model_name, **kwargs):
@@ -25,29 +21,16 @@ def fetch_pretrained_model(model_class, model_name, **kwargs):
 
 def get_diffusion_pipelines():
     """
-    Fetches the Stable Diffusion XL pipelines from the HuggingFace model hub.
+    Fetches the Animagine XL 4.0 pipeline from the HuggingFace model hub.
     """
-    common_args = {
-        "torch_dtype": torch.float16,
-        "variant": "fp16",
-        "use_safetensors": True,
-    }
-
     pipe = fetch_pretrained_model(
         StableDiffusionXLPipeline,
-        "stabilityai/stable-diffusion-xl-base-1.0",
-        **common_args,
-    )
-    vae = fetch_pretrained_model(
-        AutoencoderKL, "madebyollin/sdxl-vae-fp16-fix", **{"torch_dtype": torch.float16}
-    )
-    refiner = fetch_pretrained_model(
-        StableDiffusionXLImg2ImgPipeline,
-        "stabilityai/stable-diffusion-xl-refiner-1.0",
-        **common_args,
+        "cagliostrolab/animagine-xl-4.0",
+        torch_dtype=torch.float16,
+        use_safetensors=True,
     )
 
-    return pipe, refiner, vae
+    return pipe
 
 
 if __name__ == "__main__":
